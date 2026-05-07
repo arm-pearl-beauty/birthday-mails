@@ -2,73 +2,46 @@ require("dotenv").config();
 
 const express = require("express");
 const axios = require("axios");
-const cors = require("cors");
-const cron = require("node-cron");
 
 const app = express();
 
 app.use(express.json());
-app.use(cors());
 
 const SHOP = process.env.SHOP;
 const ACCESS_TOKEN = process.env.ACCESS_TOKEN;
+
 const PORT = process.env.PORT || 3000;
 
 
 
 
 
-// ==========================================
-// CHECK LOGIN STATUS
-// ==========================================
-app.get("/check-customer", async (req, res) => {
-
-    try {
-
-        const customerToken = req.headers.cookie;
-
-        if (!customerToken) {
-            return res.json({
-                loggedIn: false
-            });
-        }
-
-        return res.json({
-            loggedIn: true
-        });
-
-    } catch (err) {
-
-        console.log(err.message);
-
-        res.json({
-            loggedIn: false
-        });
-
-    }
-
-});
-
-
-
-
-
-
-// ==========================================
 // SAVE BIRTHDAY
-// ==========================================
 app.post("/save-birthday", async (req, res) => {
 
     try {
 
         const { email, birthday } = req.body;
 
+        console.log("REQUEST DATA:", req.body);
+
+        // VALIDATION
         if (!email || !birthday) {
-            return res.status(400).send("Missing data");
+
+            return res
+                .status(400)
+                .send("Email and Birthday required");
+
         }
 
-        // SEARCH CUSTOMER
-        const customerRes = await axios.get(
+        let customerId;
+
+
+
+
+
+        // 1. SEARCH EXISTING CUSTOMER
+        const searchResponse = await axios.get(
             `https://${SHOP}/admin/api/2024-01/customers/search.json?query=email:${email}`,
             {
                 headers: {
@@ -77,74 +50,86 @@ app.post("/save-birthday", async (req, res) => {
             }
         );
 
-        const customer = customerRes.data.customers[0];
+        const existingCustomer =
+            searchResponse.data.customers[0];
 
-        if (!customer) {
-            return res.status(404).send("Customer not found");
+
+
+
+
+        // 2. CUSTOMER EXISTS
+        if (existingCustomer) {
+
+            console.log("Existing Customer Found");
+
+            customerId = existingCustomer.id;
+
+        } else {
+
+            console.log("Creating New Customer");
+
+
+
+
+
+            // 3. CREATE NEW CUSTOMER
+            const createCustomer = await axios.post(
+                `https://${SHOP}/admin/api/2024-01/customers.json`,
+                {
+                    customer: {
+                        email: email,
+                        tags: "Birthday Popup",
+                    },
+                },
+                {
+                    headers: {
+                        "X-Shopify-Access-Token": ACCESS_TOKEN,
+                        "Content-Type": "application/json",
+                    },
+                }
+            );
+
+            customerId =
+                createCustomer.data.customer.id;
+
         }
 
-        // GET METAFIELDS
-        const metafieldsRes = await axios.get(
-            `https://${SHOP}/admin/api/2024-01/customers/${customer.id}/metafields.json`,
+
+
+
+
+        // 4. SAVE BIRTHDAY METAFIELD
+        await axios.post(
+            `https://${SHOP}/admin/api/2024-01/customers/${customerId}/metafields.json`,
+            {
+                metafield: {
+                    namespace: "custom",
+                    key: "birthday",
+                    type: "date",
+                    value: birthday,
+                },
+            },
             {
                 headers: {
                     "X-Shopify-Access-Token": ACCESS_TOKEN,
+                    "Content-Type": "application/json",
                 },
             }
         );
 
-        const existing = metafieldsRes.data.metafields.find(
-            (m) =>
-                m.namespace === "custom" &&
-                m.key === "birthday"
+
+
+
+
+        console.log("Birthday Saved");
+
+        res.send("Birthday saved successfully");
+
+    } catch (error) {
+
+        console.log(
+            error.response?.data || error.message
         );
-
-        // UPDATE
-        if (existing) {
-
-            await axios.put(
-                `https://${SHOP}/admin/api/2024-01/metafields/${existing.id}.json`,
-                {
-                    metafield: {
-                        id: existing.id,
-                        value: birthday,
-                        type: "date",
-                    },
-                },
-                {
-                    headers: {
-                        "X-Shopify-Access-Token": ACCESS_TOKEN,
-                    },
-                }
-            );
-
-        } else {
-
-            // CREATE
-            await axios.post(
-                `https://${SHOP}/admin/api/2024-01/customers/${customer.id}/metafields.json`,
-                {
-                    metafield: {
-                        namespace: "custom",
-                        key: "birthday",
-                        type: "date",
-                        value: birthday,
-                    },
-                },
-                {
-                    headers: {
-                        "X-Shopify-Access-Token": ACCESS_TOKEN,
-                    },
-                }
-            );
-
-        }
-
-        res.send("Birthday saved 🎉");
-
-    } catch (err) {
-
-        console.log(err.response?.data || err.message);
 
         res.status(500).send("Error saving birthday");
 
@@ -157,115 +142,286 @@ app.post("/save-birthday", async (req, res) => {
 
 
 
-
-// ==========================================
-// SEND BIRTHDAY EMAIL
-// ==========================================
-async function sendBirthdayEmail(email, name) {
-
-    console.log(`Sending birthday email to ${email}`);
-
-    // ADD KLAVIYO / SMTP / SENDGRID HERE
-
-}
-
-
-
-
-
-
-
-// ==========================================
-// DAILY CRON
-// ==========================================
-cron.schedule("0 9 * * *", async () => {
-
-    console.log("Running birthday cron");
-
-    try {
-
-        const res = await axios.get(
-            `https://${SHOP}/admin/api/2024-01/customers.json?limit=250`,
-            {
-                headers: {
-                    "X-Shopify-Access-Token": ACCESS_TOKEN,
-                },
-            }
-        );
-
-        const customers = res.data.customers;
-
-        const today = new Date();
-
-        const todayMonth = today.getMonth() + 1;
-
-        const todayDate = today.getDate();
-
-        for (let customer of customers) {
-
-            const metafieldsRes = await axios.get(
-                `https://${SHOP}/admin/api/2024-01/customers/${customer.id}/metafields.json`,
-                {
-                    headers: {
-                        "X-Shopify-Access-Token": ACCESS_TOKEN,
-                    },
-                }
-            );
-
-            const birthdayField = metafieldsRes.data.metafields.find(
-                (m) =>
-                    m.namespace === "custom" &&
-                    m.key === "birthday"
-            );
-
-            if (!birthdayField) continue;
-
-            const birthday = new Date(birthdayField.value);
-
-            const month = birthday.getMonth() + 1;
-
-            const day = birthday.getDate();
-
-            if (
-                month === todayMonth &&
-                day === todayDate
-            ) {
-
-                console.log("Birthday Found:", customer.email);
-
-                await sendBirthdayEmail(
-                    customer.email,
-                    customer.first_name
-                );
-
-            }
-
-        }
-
-    } catch (err) {
-
-        console.log("Cron Error:", err.message);
-
-    }
-
-});
-
-
-
-
-
-
-// ==========================================
-// SERVER
-// ==========================================
 app.listen(PORT, () => {
 
-    console.log(`Server running on port ${PORT}`);
+    console.log(`Server running on ${PORT}`);
 
 });
 
 
 
+// ==========================================================================================================================================================================
+// ============================================================================================================================================================================
+
+
+// require("dotenv").config();
+
+// const express = require("express");
+// const axios = require("axios");
+// const cors = require("cors");
+// const cron = require("node-cron");
+
+// const app = express();
+
+// app.use(express.json());
+// app.use(cors());
+
+// const SHOP = process.env.SHOP;
+// const ACCESS_TOKEN = process.env.ACCESS_TOKEN;
+// const PORT = process.env.PORT || 3000;
+
+
+
+
+
+// // ==========================================
+// // CHECK LOGIN STATUS
+// // ==========================================
+// app.get("/check-customer", async (req, res) => {
+
+//     try {
+
+//         const customerToken = req.headers.cookie;
+
+//         if (!customerToken) {
+//             return res.json({
+//                 loggedIn: false
+//             });
+//         }
+
+//         return res.json({
+//             loggedIn: true
+//         });
+
+//     } catch (err) {
+
+//         console.log(err.message);
+
+//         res.json({
+//             loggedIn: false
+//         });
+
+//     }
+
+// });
+
+
+
+
+
+
+// // ==========================================
+// // SAVE BIRTHDAY
+// // ==========================================
+// app.post("/save-birthday", async (req, res) => {
+
+//     try {
+
+//         const { email, birthday } = req.body;
+
+//         if (!email || !birthday) {
+//             return res.status(400).send("Missing data");
+//         }
+
+//         // SEARCH CUSTOMER
+//         const customerRes = await axios.get(
+//             `https://${SHOP}/admin/api/2024-01/customers/search.json?query=email:${email}`,
+//             {
+//                 headers: {
+//                     "X-Shopify-Access-Token": ACCESS_TOKEN,
+//                 },
+//             }
+//         );
+
+//         const customer = customerRes.data.customers[0];
+
+//         if (!customer) {
+//             return res.status(404).send("Customer not found");
+//         }
+
+//         // GET METAFIELDS
+//         const metafieldsRes = await axios.get(
+//             `https://${SHOP}/admin/api/2024-01/customers/${customer.id}/metafields.json`,
+//             {
+//                 headers: {
+//                     "X-Shopify-Access-Token": ACCESS_TOKEN,
+//                 },
+//             }
+//         );
+
+//         const existing = metafieldsRes.data.metafields.find(
+//             (m) =>
+//                 m.namespace === "custom" &&
+//                 m.key === "birthday"
+//         );
+
+//         // UPDATE
+//         if (existing) {
+
+//             await axios.put(
+//                 `https://${SHOP}/admin/api/2024-01/metafields/${existing.id}.json`,
+//                 {
+//                     metafield: {
+//                         id: existing.id,
+//                         value: birthday,
+//                         type: "date",
+//                     },
+//                 },
+//                 {
+//                     headers: {
+//                         "X-Shopify-Access-Token": ACCESS_TOKEN,
+//                     },
+//                 }
+//             );
+
+//         } else {
+
+//             // CREATE
+//             await axios.post(
+//                 `https://${SHOP}/admin/api/2024-01/customers/${customer.id}/metafields.json`,
+//                 {
+//                     metafield: {
+//                         namespace: "custom",
+//                         key: "birthday",
+//                         type: "date",
+//                         value: birthday,
+//                     },
+//                 },
+//                 {
+//                     headers: {
+//                         "X-Shopify-Access-Token": ACCESS_TOKEN,
+//                     },
+//                 }
+//             );
+
+//         }
+
+//         res.send("Birthday saved 🎉");
+
+//     } catch (err) {
+
+//         console.log(err.response?.data || err.message);
+
+//         res.status(500).send("Error saving birthday");
+
+//     }
+
+// });
+
+
+
+
+
+
+
+// // ==========================================
+// // SEND BIRTHDAY EMAIL
+// // ==========================================
+// async function sendBirthdayEmail(email, name) {
+
+//     console.log(`Sending birthday email to ${email}`);
+
+//     // ADD KLAVIYO / SMTP / SENDGRID HERE
+
+// }
+
+
+
+
+
+
+
+// // ==========================================
+// // DAILY CRON
+// // ==========================================
+// cron.schedule("0 9 * * *", async () => {
+
+//     console.log("Running birthday cron");
+
+//     try {
+
+//         const res = await axios.get(
+//             `https://${SHOP}/admin/api/2024-01/customers.json?limit=250`,
+//             {
+//                 headers: {
+//                     "X-Shopify-Access-Token": ACCESS_TOKEN,
+//                 },
+//             }
+//         );
+
+//         const customers = res.data.customers;
+
+//         const today = new Date();
+
+//         const todayMonth = today.getMonth() + 1;
+
+//         const todayDate = today.getDate();
+
+//         for (let customer of customers) {
+
+//             const metafieldsRes = await axios.get(
+//                 `https://${SHOP}/admin/api/2024-01/customers/${customer.id}/metafields.json`,
+//                 {
+//                     headers: {
+//                         "X-Shopify-Access-Token": ACCESS_TOKEN,
+//                     },
+//                 }
+//             );
+
+//             const birthdayField = metafieldsRes.data.metafields.find(
+//                 (m) =>
+//                     m.namespace === "custom" &&
+//                     m.key === "birthday"
+//             );
+
+//             if (!birthdayField) continue;
+
+//             const birthday = new Date(birthdayField.value);
+
+//             const month = birthday.getMonth() + 1;
+
+//             const day = birthday.getDate();
+
+//             if (
+//                 month === todayMonth &&
+//                 day === todayDate
+//             ) {
+
+//                 console.log("Birthday Found:", customer.email);
+
+//                 await sendBirthdayEmail(
+//                     customer.email,
+//                     customer.first_name
+//                 );
+
+//             }
+
+//         }
+
+//     } catch (err) {
+
+//         console.log("Cron Error:", err.message);
+
+//     }
+
+// });
+
+
+
+
+
+
+// // ==========================================
+// // SERVER
+// // ==========================================
+// app.listen(PORT, () => {
+
+//     console.log(`Server running on port ${PORT}`);
+
+// });
+
+
+// ===========================================================================================================================================================
 
 // require("dotenv").config();
 // const express = require("express");
