@@ -23,50 +23,63 @@ app.post("/save-birthday", async (req, res) => {
 
     try {
 
-        const { contact, birthday } = req.body;
+        const {
+            email,
+            phone,
+            birthday
+        } = req.body;
 
         console.log("REQUEST DATA:", req.body);
 
         // VALIDATION
-        if (!contact || !birthday) {
+        if (
+            !email ||
+            !phone ||
+            !birthday
+        ) {
 
             return res
                 .status(400)
-                .send("Contact and Birthday required");
+                .send("All fields required");
 
         }
 
-        const cleanContact = contact.trim();
+        // const cleanContact = contact.trim();
 
-        // CHECK EMAIL OR PHONE
-        const isEmail =
-            cleanContact.includes("@");
+        // // CHECK EMAIL OR PHONE
+        // const isEmail =
+        //     cleanContact.includes("@");
 
-        let customerData = {};
+        // let customerData = {};
 
-        if (isEmail) {
+        // if (isEmail) {
 
-            customerData.email = cleanContact;
+        //     customerData.email = cleanContact;
 
-        } else {
+        // } else {
 
-            customerData.phone = cleanContact;
+        //     customerData.phone = cleanContact;
 
-        }
+        // }
 
         let customerId;
 
 
 
+        const customerData = {
+            email,
+            phone,
+        };
+
 
 
         // 1. SEARCH EXISTING CUSTOMER
 
-        const searchQuery = isEmail
-            ? `email:${cleanContact}`
-            : `phone:${cleanContact}`;
+        // const searchQuery = isEmail
+        //     ? `email:${cleanContact}`
+        //     : `phone:${cleanContact}`;
         const searchResponse = await axios.get(
-            `https://${SHOP}/admin/api/2024-01/customers/search.json?query=${searchQuery}`,
+            `https://${SHOP}/admin/api/2024-01/customers/search.json?query=email:${email}`,
             {
                 headers: {
                     "X-Shopify-Access-Token": ACCESS_TOKEN,
@@ -101,7 +114,8 @@ app.post("/save-birthday", async (req, res) => {
                 `https://${SHOP}/admin/api/2024-01/customers.json`,
                 {
                     customer: {
-                        ...customerData,
+                        email,
+                        phone,
                         tags: "Birthday Popup",
                     },
                 },
