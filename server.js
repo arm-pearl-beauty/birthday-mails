@@ -133,7 +133,33 @@ app.post("/save-birthday", async (req, res) => {
         }
 
 
+        // CHECK EXISTING METAFIELDS
+        const metafieldCheck = await axios.get(
+            `https://${SHOP}/admin/api/2024-01/customers/${customerId}/metafields.json`,
+            {
+                headers: {
+                    "X-Shopify-Access-Token": ACCESS_TOKEN,
+                },
+            }
+        );
 
+        const existingBirthday =
+            metafieldCheck.data.metafields.find(
+                (m) =>
+                    m.namespace === "custom" &&
+                    m.key === "birthday"
+            );
+
+
+
+        // ALREADY EXISTS
+        if (existingBirthday) {
+
+            return res.send(
+                "Birthday already saved"
+            );
+
+        }
 
 
         // 4. SAVE BIRTHDAY METAFIELD
