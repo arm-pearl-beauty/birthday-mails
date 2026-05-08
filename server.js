@@ -23,16 +23,34 @@ app.post("/save-birthday", async (req, res) => {
 
     try {
 
-        const { email, birthday } = req.body;
+        const { contact, birthday } = req.body;
 
         console.log("REQUEST DATA:", req.body);
 
         // VALIDATION
-        if (!email || !birthday) {
+        if (!contact || !birthday) {
 
             return res
                 .status(400)
-                .send("Email and Birthday required");
+                .send("Contact and Birthday required");
+
+        }
+
+        const cleanContact = contact.trim();
+
+        // CHECK EMAIL OR PHONE
+        const isEmail =
+            cleanContact.includes("@");
+
+        let customerData = {};
+
+        if (isEmail) {
+
+            customerData.email = cleanContact;
+
+        } else {
+
+            customerData.phone = cleanContact;
 
         }
 
@@ -43,8 +61,12 @@ app.post("/save-birthday", async (req, res) => {
 
 
         // 1. SEARCH EXISTING CUSTOMER
+
+        const searchQuery = isEmail
+            ? `email:${cleanContact}`
+            : `phone:${cleanContact}`;
         const searchResponse = await axios.get(
-            `https://${SHOP}/admin/api/2024-01/customers/search.json?query=email:${email}`,
+            `https://${SHOP}/admin/api/2024-01/customers/search.json?query=${searchQuery}`,
             {
                 headers: {
                     "X-Shopify-Access-Token": ACCESS_TOKEN,
@@ -79,7 +101,7 @@ app.post("/save-birthday", async (req, res) => {
                 `https://${SHOP}/admin/api/2024-01/customers.json`,
                 {
                     customer: {
-                        email: email,
+                        ...customerData,
                         tags: "Birthday Popup",
                     },
                 },
