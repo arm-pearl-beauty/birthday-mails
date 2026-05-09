@@ -5,17 +5,51 @@ const axios = require("axios");
 const cors = require("cors");
 
 const app = express();
-app.use(cors());
 
+app.use(cors());
 app.use(express.json());
 
 const SHOP = process.env.SHOP;
 const ACCESS_TOKEN = process.env.ACCESS_TOKEN;
-
 const PORT = process.env.PORT || 3000;
 
+const GRAPHQL_URL =
+    `https://${SHOP}/admin/api/2024-01/graphql.json`;
 
 
+
+
+// SHOPIFY GRAPHQL HELPER
+async function shopifyGraphQL(query, variables = {}) {
+
+    try {
+
+        const response = await axios.post(
+            GRAPHQL_URL,
+            {
+                query,
+                variables,
+            },
+            {
+                headers: {
+                    "X-Shopify-Access-Token": ACCESS_TOKEN,
+                    "Content-Type": "application/json",
+                },
+            }
+        );
+
+        return response.data;
+
+    } catch (error) {
+
+        console.log(
+            "GraphQL Error:",
+            error.response?.data || error.message
+        );
+
+        throw error;
+    }
+}
 
 
 // SAVE BIRTHDAY
@@ -26,10 +60,13 @@ app.post("/save-birthday", async (req, res) => {
         const {
             email,
             phone,
-            birthday
+            birthday,
         } = req.body;
 
         console.log("REQUEST DATA:", req.body);
+
+
+
 
         // VALIDATION
         if (
@@ -44,142 +81,228 @@ app.post("/save-birthday", async (req, res) => {
 
         }
 
-        // const cleanContact = contact.trim();
 
-        // // CHECK EMAIL OR PHONE
-        // const isEmail =
-        //     cleanContact.includes("@");
+        // =====================================================
+        // 1. SEARCH CUSTOMER
+        // =====================================================
 
-        // let customerData = {};
+        const FIND_CUSTOMER_QUERY = `
+      query getCustomer($query: String!) {
 
-        // if (isEmail) {
+        customers(first: 1, query: $query) {
 
-        //     customerData.email = cleanContact;
+          edges {
 
-        // } else {
+            node {
+              id
+              email
 
-        //     customerData.phone = cleanContact;
-
-        // }
-
-        let customerId;
-
-
-
-        const customerData = {
-            email,
-            phone,
-        };
-
-
-
-        // 1. SEARCH EXISTING CUSTOMER
-
-        // const searchQuery = isEmail
-        //     ? `email:${cleanContact}`
-        //     : `phone:${cleanContact}`;
-        const searchResponse = await axios.get(
-            `https://${SHOP}/admin/api/2024-01/customers/search.json?query=email:${email}`,
-            {
-                headers: {
-                    "X-Shopify-Access-Token": ACCESS_TOKEN,
-                },
+              metafield(
+                namespace: "custom",
+                key: "birthday"
+              ) {
+                value
+              }
             }
-        );
-
-        const existingCustomer =
-            searchResponse.data.customers[0];
-
-
+          }
+        }
+      }
+    `;
 
 
-
-        // 2. CUSTOMER EXISTS
-        if (existingCustomer) {
-
-            console.log("Existing Customer Found");
-
-            customerId = existingCustomer.id;
-
-        } else {
-
-            console.log("Creating New Customer");
-
-
-
-
-
-            // 3. CREATE NEW CUSTOMER
-            const createCustomer = await axios.post(
-                `https://${SHOP}/admin/api/2024-01/customers.json`,
+        const customerResponse =
+            await shopifyGraphQL(
+                FIND_CUSTOMER_QUERY,
                 {
-                    customer: {
-                        email,
-                        phone,
-                        tags: "Birthday Popup",
-                    },
-                },
-                {
-                    headers: {
-                        "X-Shopify-Access-Token": ACCESS_TOKEN,
-                        "Content-Type": "application/json",
-                    },
+                    query: `email:${email}`
                 }
             );
 
+
+
+        let customer =
+            customerResponse
+                .data
+                .customers
+                .edges[0]?.node;
+
+
+
+
+
+        let customerId;
+
+        // =====================================================
+        // 2. CUSTOMER EXISTS
+        // =====================================================
+
+        if (customer) {
+
+            console.log("Existing Customer Found");
+
+            customerId = customer.id;
+
+            // BIRTHDAY ALREADY EXISTS
+            if (customer.metafield?.value) {
+
+                return res.send(
+                    "Birthday already saved"
+                );
+
+            }
+
+        } else {
+
+            // =====================================================
+            // 3. CREATE CUSTOMER
+            // =====================================================
+
+            console.log("Creating New Customer");
+
+            const CREATE_CUSTOMER_MUTATION = `
+        mutation customerCreate(
+          $input: CustomerInput!
+        ) {
+
+          customerCreate(input: $input) {
+
+            customer {
+              id
+              email
+            }
+
+            userErrors {
+              field
+              message
+            }
+          }
+        }
+      `;
+
+            const createResponse =
+                await shopifyGraphQL(
+                    CREATE_CUSTOMER_MUTATION,
+                    {
+                        input: {
+                            email,
+                            phone,
+                            tags: [
+                                "Birthday Popup"
+                            ],
+                        }
+                    }
+                );
+
+
+            const createData =
+                createResponse
+                    .data
+                    .customerCreate;
+
+
+            // HANDLE SHOPIFY ERRORS
+            if (
+                createData.userErrors.length > 0
+            ) {
+
+                console.log(
+                    "Customer Create Error:",
+                    createData.userErrors
+                );
+
+                return res
+                    .status(400)
+                    .send(
+                        createData.userErrors[0].message
+                    );
+
+            }
+
             customerId =
-                createCustomer.data.customer.id;
+                createData.customer.id;
 
         }
 
 
-        // CHECK EXISTING METAFIELDS
-        const metafieldCheck = await axios.get(
-            `https://${SHOP}/admin/api/2024-01/customers/${customerId}/metafields.json`,
-            {
-                headers: {
-                    "X-Shopify-Access-Token": ACCESS_TOKEN,
-                },
-            }
-        );
-
-        const existingBirthday =
-            metafieldCheck.data.metafields.find(
-                (m) =>
-                    m.namespace === "custom" &&
-                    m.key === "birthday"
-            );
-
-
-
-        // ALREADY EXISTS
-        if (existingBirthday) {
-
-            return res.send(
-                "Birthday already saved"
-            );
-
-        }
-
-
+        // =====================================================
         // 4. SAVE BIRTHDAY METAFIELD
-        await axios.post(
-            `https://${SHOP}/admin/api/2024-01/customers/${customerId}/metafields.json`,
-            {
-                metafield: {
-                    namespace: "custom",
-                    key: "birthday",
-                    type: "date",
-                    value: birthday,
-                },
-            },
-            {
-                headers: {
-                    "X-Shopify-Access-Token": ACCESS_TOKEN,
-                    "Content-Type": "application/json",
-                },
-            }
-        );
+        // =====================================================
+
+        const SET_METAFIELD_MUTATION = `
+      mutation setMetafields(
+        $metafields: [MetafieldsSetInput!]!
+      ) {
+
+        metafieldsSet(
+          metafields: $metafields
+        ) {
+
+          metafields {
+            key
+            value
+          }
+
+          userErrors {
+            field
+            message
+          }
+        }
+      }
+    `;
+
+
+
+
+
+
+        const metafieldResponse =
+            await shopifyGraphQL(
+                SET_METAFIELD_MUTATION,
+                {
+                    metafields: [
+                        {
+                            ownerId: customerId,
+                            namespace: "custom",
+                            key: "birthday",
+                            type: "date",
+                            value: birthday,
+                        }
+                    ]
+                }
+            );
+
+
+
+
+
+
+        const metafieldErrors =
+            metafieldResponse
+                .data
+                .metafieldsSet
+                .userErrors;
+
+
+
+
+
+        if (
+            metafieldErrors.length > 0
+        ) {
+
+            console.log(
+                "Metafield Error:",
+                metafieldErrors
+            );
+
+            return res
+                .status(400)
+                .send(
+                    metafieldErrors[0].message
+                );
+
+        }
+
 
 
 
@@ -187,15 +310,20 @@ app.post("/save-birthday", async (req, res) => {
 
         console.log("Birthday Saved");
 
-        res.send("Birthday saved successfully");
+        res.send(
+            "Birthday saved successfully"
+        );
 
     } catch (error) {
 
         console.log(
-            error.response?.data || error.message
+            error.response?.data ||
+            error.message
         );
 
-        res.status(500).send("Error saving birthday");
+        res
+            .status(500)
+            .send("Error saving birthday");
 
     }
 
@@ -206,11 +334,194 @@ app.post("/save-birthday", async (req, res) => {
 
 
 
+
 app.listen(PORT, () => {
 
-    console.log(`Server running on ${PORT}`);
+    console.log(
+        `Server running on ${PORT}`
+    );
 
 });
+
+
+
+
+
+// ==================================================================================================================================================================
+// ====================================================================================================================================================================
+
+
+
+
+
+
+// require("dotenv").config();
+
+// const express = require("express");
+// const axios = require("axios");
+// const cors = require("cors");
+
+// const app = express();
+// app.use(cors());
+
+// app.use(express.json());
+
+// const SHOP = process.env.SHOP;
+// const ACCESS_TOKEN = process.env.ACCESS_TOKEN;
+
+// const PORT = process.env.PORT || 3000;
+
+
+// // SAVE BIRTHDAY
+// app.post("/save-birthday", async (req, res) => {
+
+//     try {
+
+//         const {
+//             email,
+//             phone,
+//             birthday
+//         } = req.body;
+
+//         console.log("REQUEST DATA:", req.body);
+
+//         // VALIDATION
+//         if (
+//             !email ||
+//             !phone ||
+//             !birthday
+//         ) {
+
+//             return res
+//                 .status(400)
+//                 .send("All fields required");
+
+//         }
+
+//         let customerId;
+
+
+
+//         const customerData = {
+//             email,
+//             phone,
+//         };
+
+//         const searchResponse = await axios.get(
+//             `https://${SHOP}/admin/api/2024-01/customers/search.json?query=email:${email}`,
+//             {
+//                 headers: {
+//                     "X-Shopify-Access-Token": ACCESS_TOKEN,
+//                 },
+//             }
+//         );
+
+//         const existingCustomer =
+//             searchResponse.data.customers[0];
+
+//         // 2. CUSTOMER EXISTS
+//         if (existingCustomer) {
+
+//             console.log("Existing Customer Found");
+
+//             customerId = existingCustomer.id;
+
+//         } else {
+
+//             console.log("Creating New Customer");
+
+//             // 3. CREATE NEW CUSTOMER
+//             const createCustomer = await axios.post(
+//                 `https://${SHOP}/admin/api/2024-01/customers.json`,
+//                 {
+//                     customer: {
+//                         email,
+//                         phone,
+//                         tags: "Birthday Popup",
+//                     },
+//                 },
+//                 {
+//                     headers: {
+//                         "X-Shopify-Access-Token": ACCESS_TOKEN,
+//                         "Content-Type": "application/json",
+//                     },
+//                 }
+//             );
+
+//             customerId =
+//                 createCustomer.data.customer.id;
+
+//         }
+
+
+//         // CHECK EXISTING METAFIELDS
+//         const metafieldCheck = await axios.get(
+//             `https://${SHOP}/admin/api/2024-01/customers/${customerId}/metafields.json`,
+//             {
+//                 headers: {
+//                     "X-Shopify-Access-Token": ACCESS_TOKEN,
+//                 },
+//             }
+//         );
+
+//         const existingBirthday =
+//             metafieldCheck.data.metafields.find(
+//                 (m) =>
+//                     m.namespace === "custom" &&
+//                     m.key === "birthday"
+//             );
+
+
+
+//         // ALREADY EXISTS
+//         if (existingBirthday) {
+
+//             return res.send(
+//                 "Birthday already saved"
+//             );
+
+//         }
+
+
+//         // 4. SAVE BIRTHDAY METAFIELD
+//         await axios.post(
+//             `https://${SHOP}/admin/api/2024-01/customers/${customerId}/metafields.json`,
+//             {
+//                 metafield: {
+//                     namespace: "custom",
+//                     key: "birthday",
+//                     type: "date",
+//                     value: birthday,
+//                 },
+//             },
+//             {
+//                 headers: {
+//                     "X-Shopify-Access-Token": ACCESS_TOKEN,
+//                     "Content-Type": "application/json",
+//                 },
+//             }
+//         );
+//         console.log("Birthday Saved");
+
+//         res.send("Birthday saved successfully");
+
+//     } catch (error) {
+
+//         console.log(
+//             error.response?.data || error.message
+//         );
+
+//         res.status(500).send("Error saving birthday");
+
+//     }
+
+// });
+
+// app.listen(PORT, () => {
+
+//     console.log(`Server running on ${PORT}`);
+
+// });
 
 
 
