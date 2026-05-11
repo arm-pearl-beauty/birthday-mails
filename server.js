@@ -3,15 +3,55 @@ require("dotenv").config();
 const express = require("express");
 const axios = require("axios");
 const cors = require("cors");
+const fs = require("fs");
+const createCsvWriter =
+    require("csv-writer")
+        .createObjectCsvWriter;
 
 const app = express();
 
 app.use(cors());
 app.use(express.json());
+app.use(express.static(__dirname));
+
+
+
 
 const SHOP = process.env.SHOP;
 const ACCESS_TOKEN = process.env.ACCESS_TOKEN;
 const PORT = process.env.PORT || 3000;
+
+const csvWriter = createCsvWriter({
+
+    path: "customers.csv",
+
+    header: [
+
+        {
+            id: "email",
+            title: "EMAIL"
+        },
+
+        {
+            id: "phone",
+            title: "PHONE"
+        },
+
+        {
+            id: "birthday",
+            title: "BIRTHDAY"
+        },
+
+        {
+            id: "savedAt",
+            title: "SAVED_AT"
+        }
+
+    ],
+
+    append: fs.existsSync("customers.csv")
+
+});
 
 const GRAPHQL_URL =
     `https://${SHOP}/admin/api/2024-01/graphql.json`;
@@ -114,7 +154,7 @@ app.post("/save-birthday", async (req, res) => {
             await shopifyGraphQL(
                 FIND_CUSTOMER_QUERY,
                 {
-                    query: `email:${email}`
+                    query: `email:${email.trim().toLowerCase()}`
                 }
             );
 
@@ -205,21 +245,85 @@ app.post("/save-birthday", async (req, res) => {
                 createData.userErrors.length > 0
             ) {
 
-                console.log(
-                    "Customer Create Error:",
-                    createData.userErrors
-                );
-
-                return res
-                    .status(400)
-                    .send(
-                        createData.userErrors[0].message
+                const emailExists =
+                    createData.userErrors.some(
+                        err =>
+                            err.message
+                                .toLowerCase()
+                                .includes("taken")
                     );
 
-            }
 
-            customerId =
-                createData.customer.id;
+
+
+
+                // EMAIL ALREADY EXISTS
+                if (emailExists) {
+
+                    console.log(
+                        "Customer already exists. Re-searching..."
+                    );
+
+
+
+
+
+                    // SEARCH AGAIN
+                    const retrySearch =
+                        await shopifyGraphQL(
+                            FIND_CUSTOMER_QUERY,
+                            {
+                                query: `email:${email.trim().toLowerCase()}`
+                            }
+                        );
+
+
+
+
+
+                    const retryCustomer =
+                        retrySearch
+                            .data
+                            .customers
+                            .edges[0]?.node;
+
+
+
+
+
+                    if (!retryCustomer) {
+
+                        return res
+                            .status(400)
+                            .send(
+                                "Customer exists but could not retrieve."
+                            );
+
+                    }
+
+
+
+
+
+                    customerId =
+                        retryCustomer.id;
+
+                } else {
+
+                    return res
+                        .status(400)
+                        .send(
+                            createData.userErrors[0].message
+                        );
+
+                }
+
+            } else {
+
+                customerId =
+                    createData.customer.id;
+
+            }
 
         }
 
@@ -310,6 +414,41 @@ app.post("/save-birthday", async (req, res) => {
 
         console.log("Birthday Saved");
 
+        // CHECK DUPLICATE EMAIL
+        const existingData =
+            fs.existsSync("customers.csv")
+
+                ? fs.readFileSync(
+                    "customers.csv",
+                    "utf8"
+                )
+
+                : "";
+
+
+
+        if (
+            !existingData.includes(email)
+        ) {
+
+            await csvWriter.writeRecords([
+
+                {
+                    email,
+                    phone,
+                    birthday,
+
+                    savedAt:
+                        new Date()
+                            .toISOString()
+                }
+
+            ]);
+
+        }
+
+
+
         res.send(
             "Birthday saved successfully"
         );
@@ -332,7 +471,17 @@ app.post("/save-birthday", async (req, res) => {
 
 
 
+app.get(
+    "/download-customers",
 
+    (req, res) => {
+
+        res.download(
+            "customers.csv"
+        );
+
+    }
+);
 
 
 app.listen(PORT, () => {
