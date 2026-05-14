@@ -473,15 +473,7 @@ app.post("/save-birthday", async (req, res) => {
 
         console.log("Birthday Saved");
 
-        await axios.post(
-            "https://flow.zoho.in/60071746226/flow/webhook/incoming?zapikey=1001.c76a306e5922ce215890b11d013853eb.712a7242ed4722dc3298ac51b0a471c5&isdebug=false",
-            {
-                email,
-                phone,
-                birthday,
-                createdAt: new Date(),
-            }
-        );
+
 
         res.send(
             "Birthday saved successfully"
