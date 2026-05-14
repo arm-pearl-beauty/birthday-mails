@@ -3,6 +3,8 @@ require("dotenv").config();
 const express = require("express");
 const axios = require("axios");
 const cors = require("cors");
+const cron = require("node-cron");
+const nodemailer = require("nodemailer");
 
 
 const app = express();
@@ -14,8 +16,52 @@ const SHOP = process.env.SHOP;
 const ACCESS_TOKEN = process.env.ACCESS_TOKEN;
 const PORT = process.env.PORT || 3000;
 
+// const transporter =
+//     nodemailer.createTransport({
+
+//         host: process.env.EMAIL_HOST,
+
+//         port: process.env.EMAIL_PORT,
+
+//         secure: true,
+
+//         auth: {
+//             user: process.env.EMAIL_USER,
+//             pass: process.env.EMAIL_PASS,
+//         },
+
+//     });
+const transporter =
+    nodemailer.createTransport({
+
+        host: "smtppro.zoho.in",
+
+        port: 465,
+
+        secure: true,
+
+        auth: {
+            user: process.env.EMAIL_USER,
+            pass: process.env.EMAIL_PASS,
+        },
+
+    });
+transporter.verify(function (error, success) {
+
+    if (error) {
+
+        console.log("SMTP ERROR:", error);
+
+    } else {
+
+        console.log("SMTP READY");
+
+    }
+
+});
+
 const GRAPHQL_URL =
-    `https://${SHOP}/admin/api/2024-01/graphql.json`;
+    `https://${SHOP}/admin/api/2025-01/graphql.json`;
 
 
 
@@ -43,10 +89,19 @@ async function shopifyGraphQL(query, variables = {}) {
 
     } catch (error) {
 
+        console.log("===============");
+        console.log("SHOPIFY ERROR");
+        console.log("===============");
+
         console.log(
-            "GraphQL Error:",
-            error.response?.data || error.message
+            JSON.stringify(
+                error.response?.data,
+                null,
+                2
+            )
         );
+
+        console.log(error.message);
 
         throw error;
     }
@@ -72,7 +127,7 @@ app.post("/save-birthday", async (req, res) => {
         // VALIDATION
         if (
             !email ||
-            !phone ||
+
             !birthday
         ) {
 
@@ -115,7 +170,10 @@ app.post("/save-birthday", async (req, res) => {
             await shopifyGraphQL(
                 FIND_CUSTOMER_QUERY,
                 {
-                    query: `email:${email.trim().toLowerCase()}`
+                    query: `email:${email
+                        .trim()
+                        .toLowerCase()
+                        .replace(/'/g, "")}`
                 }
             );
 
@@ -132,7 +190,14 @@ app.post("/save-birthday", async (req, res) => {
 
 
         let customerId;
-
+        console.log(
+            "CUSTOMER RESPONSE:",
+            JSON.stringify(
+                customerResponse,
+                null,
+                2
+            )
+        );
         // =====================================================
         // 2. CUSTOMER EXISTS
         // =====================================================
@@ -234,7 +299,10 @@ app.post("/save-birthday", async (req, res) => {
                         await shopifyGraphQL(
                             FIND_CUSTOMER_QUERY,
                             {
-                                query: `email:${email.trim().toLowerCase()}`
+                                query: `email:${email
+                                    .trim()
+                                    .toLowerCase()
+                                    .replace(/'/g, "")}`
                             }
                         );
 
@@ -330,13 +398,43 @@ app.post("/save-birthday", async (req, res) => {
                             namespace: "custom",
                             key: "birthday",
                             type: "date",
-                            value: birthday,
+                            value: new Date(birthday)
+                                .toISOString()
+                                .split("T")[0],
                         }
                     ]
                 }
             );
 
+        console.log("===============");
+        console.log("METAFIELD RESPONSE");
+        console.log("===============");
 
+        console.log(
+            JSON.stringify(
+                metafieldResponse,
+                null,
+                2
+            )
+        );
+
+        const metafieldData =
+            metafieldResponse?.data?.metafieldsSet;
+
+        if (
+            !metafieldData
+        ) {
+
+            console.log(
+                "Metafield response missing"
+            );
+
+            return res
+                .status(400)
+                .send(
+                    "Metafield failed"
+                );
+        }
 
 
 
@@ -394,11 +492,439 @@ app.post("/save-birthday", async (req, res) => {
 
 });
 
+// =======================ADD BIRTHDAY EMAIL FUNCTION=================================================================
+
+// async function sendBirthdayEmails() {
+
+//     try {
+
+//         console.log("Checking birthdays...");
+
+//         const today = new Date();
+
+//         const currentYear =
+//             today.getFullYear();
+
+//         const month =
+//             String(today.getMonth() + 1)
+//                 .padStart(2, "0");
+
+//         const day =
+//             String(today.getDate())
+//                 .padStart(2, "0");
+
+//         const todayMonthDay =
+//             `${month}-${day}`;
+
+
+
+//         // GET CUSTOMERS
+//         const query = `
+
+//     query {
+
+//       customers(first: 250) {
+
+//         edges {
+
+//           node {
+
+//             id
+//             firstName
+//             email
+
+//             birthday: metafield(
+//               namespace: "custom",
+//               key: "birthday"
+//             ) {
+//               value
+//             }
+
+//             lastMail: metafield(
+//               namespace: "custom",
+//               key: "last_birthday_email_sent"
+//             ) {
+//               value
+//             }
+
+//           }
+
+//         }
+
+//       }
+
+//     }
+
+//     `;
+
+
+
+//         const response =
+//             await shopifyGraphQL(query);
+
+//         const customers =
+//             response.data.customers.edges;
+
+
+
+//         for (const item of customers) {
+
+//             const customer = item.node;
+
+
+
+//             // SKIP EMPTY
+//             if (
+//                 !customer.email ||
+//                 !customer.birthday?.value
+//             ) {
+//                 continue;
+//             }
+
+
+
+//             const birthday =
+//                 customer.birthday.value;
+
+//             const birthdayMonthDay =
+//                 birthday.slice(5);
+
+
+
+//             // DATE NOT MATCH
+//             if (
+//                 birthdayMonthDay !==
+//                 todayMonthDay
+//             ) {
+//                 continue;
+//             }
+
+
+
+//             // ALREADY SENT
+//             if (
+//                 customer.lastMail?.value ===
+//                 String(currentYear)
+//             ) {
+
+//                 console.log(
+//                     `Already sent to ${customer.email}`
+//                 );
+
+//                 continue;
+//             }
+
+
+
+//             console.log(
+//                 `Sending birthday email to ${customer.email}`
+//             );
+
+
+
+//             // SEND EMAIL
+//             await transporter.sendMail({
+
+//                 from:
+//                     `"Arm Pearl Beauty" <hello@armpealbeauty.com>`,
+
+//                 to: `sandhyag@armpearlbeauty.com`,
+
+//                 subject:
+//                     "🎉 Happy Birthday From Arm Pearl Beauty",
+
+//                 html: `
+
+//         <div style="
+//           max-width:600px;
+//           margin:auto;
+//           padding:30px;
+//           background:#fff7f7;
+//           font-family:Arial;
+//         ">
+
+//           <h1 style="
+//             color:#a51e27;
+//             text-align:center;
+//           ">
+//             Happy Birthday 🎂
+//           </h1>
+
+//           <p style="
+//             font-size:16px;
+//             line-height:1.8;
+//             text-align:center;
+//           ">
+//             Wishing you a beautiful birthday filled with happiness & joy 💖
+//           </p>
+
+//           <div style="
+//             text-align:center;
+//             margin:30px 0;
+//           ">
+
+//             <img
+//               src="https://cdn.shopify.com/s/files/1/0770/5319/8575/files/PigmentationCream1.jpg?v=1774346370"
+//               width="220"
+//               style="
+//                 border-radius:12px;
+//               "
+//             />
+
+//              <img
+//               src="https://cdn.shopify.com/s/files/1/0770/5319/8575/files/Nightrevive.jpg?v=1764939667"
+//               width="220"
+//               style="
+//                 border-radius:12px;
+//               "
+//             />
+
+//              <img
+//               src="https://cdn.shopify.com/s/files/1/0770/5319/8575/files/body_glow_moisturiser_product_image.jpg?v=1765018739"
+//               width="220"
+//               style="
+//                 border-radius:12px;
+//               "
+//             />
+
+//              <img
+//               src="https://cdn.shopify.com/s/files/1/0770/5319/8575/files/Old_Glowing_Night_Cream_1250_X_1250.jpg?v=1758371497"
+//               width="220"
+//               style="
+//                 border-radius:12px;
+//               "
+//             />
+
+//           </div>
+
+//           <div style="
+//             text-align:center;
+//           ">
+
+//             <a
+//               href="https://armpearlbeauty.com"
+//               style="
+//                 background:#a51e27;
+//                 color:white;
+//                 padding:14px 28px;
+//                 text-decoration:none;
+//                 border-radius:8px;
+//                 display:inline-block;
+//                 font-weight:bold;
+//               "
+//             >
+//               Shop Now
+//             </a>
+
+//           </div>
+
+//         </div>
+
+//         `,
+//             });
 
 
 
 
 
+//             // SAVE SENT YEAR
+//             await shopifyGraphQL(
+
+//                 `
+//       mutation metafieldsSet(
+//         $metafields: [MetafieldsSetInput!]!
+//       ) {
+
+//         metafieldsSet(
+//           metafields: $metafields
+//         ) {
+
+//           metafields {
+//             key
+//             value
+//           }
+
+//         }
+
+//       }
+//       `,
+
+//                 {
+
+//                     metafields: [
+
+//                         {
+
+//                             ownerId: customer.id,
+
+//                             namespace: "custom",
+
+//                             key: "last_birthday_email_sent",
+
+//                             type: "single_line_text_field",
+
+//                             value: String(currentYear),
+
+//                         }
+
+//                     ]
+
+//                 }
+
+//             );
+
+
+
+//             console.log(
+//                 `Birthday email sent to ${customer.email}`
+//             );
+
+//         }
+
+//     } catch (error) {
+
+//         console.log(
+//             "Birthday Email Error:",
+//             error.message
+//         );
+
+//     }
+
+// }
+
+// =================================ADD CRON JOB=========================================
+
+// cron.schedule("0 8 * * *", () => {
+
+//     console.log(
+//         "Running birthday email cron..."
+//     );
+
+//     sendBirthdayEmails();
+
+// });
+
+// ============================================
+// async function sendTestEmail() {
+
+//     try {
+
+//         await transporter.sendMail({
+
+//             from:
+//                 `"Arm Pearl Beauty" <hello@armpearlbeauty.com>`,
+
+//             to: "gurramsandhya2013@gmail.com",
+
+//             subject:
+//                 "🎉 Birthday Test Mail",
+
+//             html: `
+
+//       <div style="
+//         max-width:600px;
+//         margin:auto;
+//         padding:30px;
+//         background:#fff7f7;
+//         font-family:Arial;
+//       ">
+
+//         <h1 style="
+//           color:#a51e27;
+//           text-align:center;
+//         ">
+//           Happy Birthday 🎂
+//         </h1>
+
+//         <p style="
+//           font-size:16px;
+//           line-height:1.8;
+//           text-align:center;
+//         ">
+//           Happy Birthday from all of us at ARM Pearl Beauty! 💖
+//         </p>
+//         <p>Your special day deserves a little extra glow, so here’s a small birthday treat from us. Enjoy 5% OFF on your favorite skincare and beauty products.</p>
+//         <p>Treat yourself to something your skin will love.</p>
+//         <div style="
+//           text-align:center;
+//           margin:20px 0;
+//         ">
+
+//           <img
+//               src="https://cdn.shopify.com/s/files/1/0770/5319/8575/files/PigmentationCream1.jpg?v=1774346370"
+//               width="250"
+//               style="
+//                 border-radius:12px;
+//               "
+//             />
+
+//              <img
+//               src="https://cdn.shopify.com/s/files/1/0770/5319/8575/files/Nightrevive.jpg?v=1764939667"
+//               width="250"
+//               style="
+//                 border-radius:12px;
+//               "
+//             />
+
+//              <img
+//               src="https://cdn.shopify.com/s/files/1/0770/5319/8575/files/body_glow_moisturiser_product_image.jpg?v=1765018739"
+//               width="250"
+//               style="
+//                 border-radius:12px;
+//               "
+//             />
+
+//              <img
+//               src="https://cdn.shopify.com/s/files/1/0770/5319/8575/files/Old_Glowing_Night_Cream_1250_X_1250.jpg?v=1758371497"
+//               width="250"
+//               style="
+//                 border-radius:12px;
+//               "
+//             />
+
+//         </div>
+
+//         <div style="
+//           text-align:center;
+//         ">
+
+//           <a
+//             href="https://armpearlbeauty.com"
+//             style="
+//               background:#a51e27;
+//               color:white;
+//               padding:14px 28px;
+//               border-radius:8px;
+//               text-decoration:none;
+//               display:inline-block;
+//               font-weight:bold;
+//             "
+//           >
+//             Shop Now
+//           </a>
+
+//         </div>
+
+//       </div>
+
+//       `,
+//         });
+
+//         console.log("Test email sent successfully");
+
+//     } catch (error) {
+
+//         console.log(
+//             "Test Mail Error:",
+//             error.message
+//         );
+
+//     }
+
+// }
+
+// sendTestEmail();
+// ============================================================
 
 app.listen(PORT, () => {
 
