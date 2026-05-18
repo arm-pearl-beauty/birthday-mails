@@ -472,8 +472,38 @@ app.post("/save-birthday", async (req, res) => {
 
 
         console.log("Birthday Saved");
+        // ===========================================================
+        // ==============================================================
 
+        // SEND TO GOOGLE SHEETS
+        await axios.post(
+            "PASTE_GOOGLE_SCRIPT_URL_HERE",
 
+            {
+                email,
+                phone,
+
+                birthday:
+                    metafieldResponse
+                        .data
+                        .metafieldsSet
+                        .metafields[0]
+                        .value
+            },
+
+            {
+                headers: {
+                    "Content-Type":
+                        "application/json",
+                },
+            }
+        );
+
+        console.log(
+            "Google Sheet Updated"
+        );
+        // ===================================================================
+        // ===================================================================
 
         res.send(
             "Birthday saved successfully"
