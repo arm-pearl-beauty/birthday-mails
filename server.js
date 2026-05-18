@@ -476,45 +476,45 @@ app.post("/save-birthday", async (req, res) => {
         // ==============================================================
 
         // SEND TO GOOGLE SHEETS
-        try {
+        // try {
 
-            // SEND TO GOOGLE SHEETS
-            await axios.post(
+        //     // SEND TO GOOGLE SHEETS
+        //     await axios.post(
 
-                "https://script.google.com/macros/s/AKfycby5VM4JL5qyV5MuFhU-cyIqXULVoIumByMsOyNV5ZfRKLiK5qUYl_wng5qlR8GNE5EM/exec",
+        //         "https://script.google.com/macros/s/AKfycby5VM4JL5qyV5MuFhU-cyIqXULVoIumByMsOyNV5ZfRKLiK5qUYl_wng5qlR8GNE5EM/exec",
 
-                {
-                    email,
-                    phone,
+        //         {
+        //             email,
+        //             phone,
 
-                    birthday:
-                        metafieldResponse
-                            .data
-                            .metafieldsSet
-                            .metafields[0]
-                            .value
-                },
+        //             birthday:
+        //                 metafieldResponse
+        //                     .data
+        //                     .metafieldsSet
+        //                     .metafields[0]
+        //                     .value
+        //         },
 
-                {
-                    headers: {
-                        "Content-Type":
-                            "application/json",
-                    },
-                }
-            );
+        //         {
+        //             headers: {
+        //                 "Content-Type":
+        //                     "application/json",
+        //             },
+        //         }
+        //     );
 
-            console.log(
-                "Google Sheet Updated"
-            );
+        //     console.log(
+        //         "Google Sheet Updated"
+        //     );
 
-        } catch (sheetError) {
+        // } catch (sheetError) {
 
-            console.log(
-                "Google Sheet Error:",
-                sheetError.message
-            );
+        //     console.log(
+        //         "Google Sheet Error:",
+        //         sheetError.message
+        //     );
 
-        }
+        // }
         // ===================================================================
         // ===================================================================
 
@@ -970,38 +970,129 @@ app.post("/save-birthday", async (req, res) => {
 
 // sendTestEmail();
 // ============================================================
-app.get("/test-sheet", async (req, res) => {
+// app.get("/test-sheet", async (req, res) => {
 
-    try {
+//     try {
 
-        await axios.post(
+//         await axios.post(
 
-            "https://script.google.com/macros/s/AKfycby5VM4JL5qyV5MuFhU-cyIqXULVoIumByMsOyNV5ZfRKLiK5qUYl_wng5qlR8GNE5EM/exec",
+//             "https://script.google.com/macros/s/AKfycby5VM4JL5qyV5MuFhU-cyIqXULVoIumByMsOyNV5ZfRKLiK5qUYl_wng5qlR8GNE5EM/exec",
 
-            {
-                email: "test@gmail.com",
-                phone: "9999999999",
-                birthday: "1999-10-10"
+//             {
+//                 email: "test@gmail.com",
+//                 phone: "9999999999",
+//                 birthday: "1999-10-10"
+//             }
+
+//         );
+
+//         console.log("TEST SHEET SUCCESS");
+
+//         res.send("Success");
+
+//     } catch (err) {
+
+//         console.log(
+//             "TEST SHEET ERROR:",
+//             err.message
+//         );
+
+//         res.send("Failed");
+
+//     }
+
+// });
+app.get(
+    "/export-birthdays",
+    async (req, res) => {
+
+        try {
+
+            const query = `
+      query {
+
+        customers(first: 250) {
+
+          edges {
+
+            node {
+
+              email
+              phone
+
+              birthday: metafield(
+                namespace: "custom",
+                key: "birthday"
+              ) {
+                value
+              }
+
             }
 
-        );
+          }
 
-        console.log("TEST SHEET SUCCESS");
+        }
 
-        res.send("Success");
+      }
+      `;
 
-    } catch (err) {
+            const response =
+                await shopifyGraphQL(query);
 
-        console.log(
-            "TEST SHEET ERROR:",
-            err.message
-        );
+            const customers =
+                response.data.customers.edges;
 
-        res.send("Failed");
+            let exported = 0;
+
+            for (const item of customers) {
+
+                const customer =
+                    item.node;
+
+                // SKIP EMPTY BIRTHDAY
+                if (
+                    !customer.birthday?.value
+                ) {
+                    continue;
+                }
+
+                await axios.post(
+
+                    "https://script.google.com/macros/s/AKfycby5VM4JL5qyV5MuFhU-cyIqXULVoIumByMsOyNV5ZfRKLiK5qUYl_wng5qlR8GNE5EM/exec",
+
+                    {
+                        email:
+                            customer.email || "",
+
+                        phone:
+                            customer.phone || "",
+
+                        birthday:
+                            customer.birthday.value
+                    }
+
+                );
+
+                exported++;
+
+            }
+
+            res.send(
+                `Exported ${exported} birthdays`
+            );
+
+        } catch (error) {
+
+            console.log(error);
+
+            res.status(500).send(
+                "Export failed"
+            );
+
+        }
 
     }
-
-});
+);
 app.listen(PORT, () => {
 
     console.log(
