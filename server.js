@@ -1020,20 +1020,11 @@ app.get(
               email
               phone
 
-              metafields(first: 10) {
-
-  edges {
-
-    node {
-
-      namespace
-      key
-      value
-
-    }
-
-  }
-
+birthday: metafield(
+  namespace: "custom",
+  key: "birthday"
+) {
+  value
 }
 
             }
@@ -1059,14 +1050,9 @@ app.get(
                     item.node;
 
                 // SKIP EMPTY BIRTHDAY
-                const birthdayMetafield =
-                    customer.metafields.edges.find(
-                        item =>
-                            item.node.namespace === "custom" &&
-                            item.node.key === "birthday"
-                    );
-
-                if (!birthdayMetafield) {
+                if (
+                    !customer.birthday?.value
+                ) {
                     continue;
                 }
 
@@ -1082,7 +1068,7 @@ app.get(
                             customer.phone || "",
 
                         birthday:
-                            birthdayMetafield.node.value
+                            customer.birthday.value
                     }
 
                 );
