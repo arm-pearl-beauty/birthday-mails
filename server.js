@@ -476,45 +476,45 @@ app.post("/save-birthday", async (req, res) => {
         // ==============================================================
 
         // SEND TO GOOGLE SHEETS
-        // try {
+        try {
 
-        //     // SEND TO GOOGLE SHEETS
-        //     await axios.post(
+            // SEND TO GOOGLE SHEETS
+            await axios.post(
 
-        //         "https://script.google.com/macros/s/AKfycby5VM4JL5qyV5MuFhU-cyIqXULVoIumByMsOyNV5ZfRKLiK5qUYl_wng5qlR8GNE5EM/exec",
+                "https://script.google.com/macros/s/AKfycby5VM4JL5qyV5MuFhU-cyIqXULVoIumByMsOyNV5ZfRKLiK5qUYl_wng5qlR8GNE5EM/exec",
 
-        //         {
-        //             email,
-        //             phone,
+                {
+                    email,
+                    phone,
 
-        //             birthday:
-        //                 metafieldResponse
-        //                     .data
-        //                     .metafieldsSet
-        //                     .metafields[0]
-        //                     .value
-        //         },
+                    birthday:
+                        metafieldResponse
+                            .data
+                            .metafieldsSet
+                            .metafields[0]
+                            .value
+                },
 
-        //         {
-        //             headers: {
-        //                 "Content-Type":
-        //                     "application/json",
-        //             },
-        //         }
-        //     );
+                {
+                    headers: {
+                        "Content-Type":
+                            "application/json",
+                    },
+                }
+            );
 
-        //     console.log(
-        //         "Google Sheet Updated"
-        //     );
+            console.log(
+                "Google Sheet Updated"
+            );
 
-        // } catch (sheetError) {
+        } catch (sheetError) {
 
-        //     console.log(
-        //         "Google Sheet Error:",
-        //         sheetError.message
-        //     );
+            console.log(
+                "Google Sheet Error:",
+                sheetError.message
+            );
 
-        // }
+        }
         // ===================================================================
         // ===================================================================
 
