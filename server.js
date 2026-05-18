@@ -46,19 +46,19 @@ const transporter =
         },
 
     });
-transporter.verify(function (error, success) {
+// transporter.verify(function (error, success) {
 
-    if (error) {
+//     if (error) {
 
-        console.log("SMTP ERROR:", error);
+//         console.log("SMTP ERROR:", error);
 
-    } else {
+//     } else {
 
-        console.log("SMTP READY");
+//         console.log("SMTP READY");
 
-    }
+//     }
 
-});
+// });
 
 const GRAPHQL_URL =
     `https://${SHOP}/admin/api/2025-01/graphql.json`;
@@ -970,7 +970,38 @@ app.post("/save-birthday", async (req, res) => {
 
 // sendTestEmail();
 // ============================================================
+app.get("/test-sheet", async (req, res) => {
 
+    try {
+
+        await axios.post(
+
+            "https://script.google.com/macros/s/AKfycby5VM4JL5qyV5MuFhU-cyIqXULVoIumByMsOyNV5ZfRKLiK5qUYl_wng5qlR8GNE5EM/exec",
+
+            {
+                email: "test@gmail.com",
+                phone: "9999999999",
+                birthday: "1999-10-10"
+            }
+
+        );
+
+        console.log("TEST SHEET SUCCESS");
+
+        res.send("Success");
+
+    } catch (err) {
+
+        console.log(
+            "TEST SHEET ERROR:",
+            err.message
+        );
+
+        res.send("Failed");
+
+    }
+
+});
 app.listen(PORT, () => {
 
     console.log(
