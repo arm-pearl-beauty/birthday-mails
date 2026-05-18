@@ -477,7 +477,7 @@ app.post("/save-birthday", async (req, res) => {
 
         // SEND TO GOOGLE SHEETS
         await axios.post(
-            "PASTE_GOOGLE_SCRIPT_URL_HERE",
+            "https://script.google.com/macros/s/AKfycby5VM4JL5qyV5MuFhU-cyIqXULVoIumByMsOyNV5ZfRKLiK5qUYl_wng5qlR8GNE5EM/exec",
 
             {
                 email,
